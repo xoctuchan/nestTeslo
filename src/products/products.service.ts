@@ -92,11 +92,23 @@ export class ProductsService {
     
     //Create query runner
     const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
     
     try {
-      await this.productRepository.save(product)  
-      return product;
+      if (images) {
+        await queryRunner.manager.delete(ProductImage, { product:{id}});
+        product.images = images.map(image =>this.productImageRepository.create({url: image}))
+      }
+      await queryRunner.manager.save(product);
+      //await this.productRepository.save(product)  
+      await queryRunner.commitTransaction();
+      await queryRunner.release();
+      return this.findOnePlain(id);
     } catch (error) {
+      await queryRunner.rollbackTransaction();
+      await queryRunner.release();
       this.handleDBExceptions(error);
     }
   }
@@ -112,6 +124,16 @@ export class ProductsService {
       if(error.code==='22P02')
       throw new BadRequestException(error.routine);
 
+      //console.log(error);
       throw new InternalServerErrorException ("Help!");
+  }
+
+  async deleteAllProducts(){
+    const query = this.productRepository.createQueryBuilder('product');
+    try {
+      return await query.delete().where({}).execute();
+    } catch (error) {
+      this.handleDBExceptions(error)
+    }
   }
 }
